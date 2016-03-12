@@ -23,6 +23,7 @@ class Capturing:
         self.continue_loop = True
 
         print(Fore.GREEN + '------------- Imsi Catcher^2 -------------')
+        print(Fore.GREEN + 'To stop the loop: Hit Enter')
 
         # set used location
         if config.other_saving_location:
@@ -37,11 +38,17 @@ class Capturing:
             os.makedirs(location)
         os.chdir(location)
 
-        # start wireshark:
-        wiresharkBashCommand = "sudo wireshark -k -f udp -Y gsmtap -i lo"
-        print(Fore.YELLOW + 'Executing command: ' + str(wiresharkBashCommand))
-        Popen(wiresharkBashCommand, shell=True)
-        time.sleep(5)  # sleep to allow you to hit enter for the warning messages :)
+        # start wireshark or tshark:
+        if config.use_wireshark:
+            wiresharkBashCommand = "sudo wireshark -k -f udp -Y gsmtap -i lo"
+            print(Fore.YELLOW + 'Executing command: ' + str(wiresharkBashCommand))
+            Popen(wiresharkBashCommand, shell=True)
+            time.sleep(5)  # sleep to allow you to hit enter for the warning messages :)
+        else:
+            tsharkBashCommand = "sudo tshark -f udp -Y gsmtap -i lo"
+            print(Fore.YELLOW + 'Executing command: ' + str(tsharkBashCommand))
+            Popen(tsharkBashCommand, shell=True)
+            time.sleep(5)  # sleep to allow you to enter sudo password
 
         # make separate folder for this capture (with current time)
         foldername = time.strftime("%d-%m-%Y_%H:%M:%S")
