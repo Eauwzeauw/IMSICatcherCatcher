@@ -1,5 +1,6 @@
 import os
 import threading
+from Queue import Queue
 from os.path import expanduser
 import time
 from subprocess import Popen
@@ -38,22 +39,26 @@ class Capturing:
             os.makedirs(location)
         os.chdir(location)
 
+        # make a queue for decodes to be done
+        self.stop_decode = False
+        self.q = Queue()
+
         # start wireshark or tshark:
         if config.use_wireshark:
             wiresharkBashCommand = "sudo wireshark -k -f udp -Y gsmtap -i lo"
             print(Fore.YELLOW + 'Executing command: ' + str(wiresharkBashCommand))
             Popen(wiresharkBashCommand, shell=True)
             time.sleep(5)  # sleep to allow you to hit enter for the warning messages :)
-        else:
-            tsharkBashCommand = "sudo tshark -f udp -Y gsmtap -i lo"
-            print(Fore.YELLOW + 'Executing command: ' + str(tsharkBashCommand))
-            Popen(tsharkBashCommand, shell=True)
-            time.sleep(5)  # sleep to allow you to enter sudo password
 
         # make separate folder for this capture (with current time)
         foldername = time.strftime("%d-%m-%Y_%H:%M:%S")
         os.makedirs(foldername)
         os.chdir(foldername)
+
+        #  device queue
+        self.deviceq = Queue()
+        for device in config.available_antennas:
+            self.deviceq.put(device)
 
         # start actually doing stuff
         self.start_loop()
@@ -64,24 +69,60 @@ class Capturing:
         """
         stop = []
         thread.start_new_thread(self.stop_loop, (stop,))
+        thread.start_new_thread(self.decode_loop, ())
         i = 0
         while not stop:
-            # capture GSM Data
-            filename = self.capture_raw_data(i)
-
-            # decode GSM Data to GSM packets (while starting new capture)
-            decode_thread = threading.Thread(target=self.decode_raw_data, args=(filename,))
-            decode_thread.start()
+            # every freq in one iteration
+            for freq in config.frequencies:
+                while True:
+                    # only continue if antenna available
+                    if self.deviceq.qsize() > 0:
+                        antenna = str(self.deviceq.get())
+                        print(Fore.GREEN + 'starting capturing on freq ' + str(freq))
+                        #self.capture_raw_data(i, freq, antenna)
+                        thread.start_new_thread(self.capture_raw_data, (i, freq, antenna))
+                        time.sleep(2)
+                        break
+                    else:
+                        time.sleep(10)
             i += 1
 
-        print(Fore.GREEN + 'Stopped. Exiting now')
+        self.stop_decode = True
+        print(Fore.GREEN + 'Finished ALL capturing')
+        if not self.q.empty():
+            self.decode_loop
 
-    def capture_raw_data(self, filenumber):
+    def decode_loop(self):
+        """
+        Decode GSM Data to GSM packets with use of a queue (which contains the filenams to decode)
+        """
+        while True:
+            # check if we should stop (so finished capturing, and the decode queue is empty
+            if self.stop_decode and self.q.empty():
+                print(Back.YELLOW + 'stop_decode = true')
+                break
+            # if the queue is filled, we should decode that!
+            if not self.q.empty():
+                filename, freq = self.q.get()
+                self.decode_raw_data(filename, freq)
+            # if the queue ie empty, let's chill for a while
+            else:
+                time.sleep(5)
+
+        print(Fore.GREEN + 'Finished ALL decoding; let\'s go to to the next location!')
+        sys.exit(0)
+
+    def capture_raw_data(self, filenumber, freq, antenna):
         """
         Capture raw antenna data using grgsm_capture.
         """
-        filename = 'capture' + str(filenumber) + '.cfile'
-        captureBashCommand = "grgsm_capture.py -c " + filename + " -f " + config.frequency + ' -T ' + config.capture_length
+        filename = 'capture' + str(filenumber) + '_' + str(freq) + '.cfile'
+        captureBashCommand = "grgsm_capture.py -c " + filename + " -f " + freq + ' -T ' \
+                             + config.capture_length \
+                             + ' --args="rtl=' + antenna + '"'
+        #captureBashCommand = 'grgsm_capture.py -c %s -f %d -T %s  --args="rtl=%s"' % (
+        #     filename, freq, config.capture_length, antenna
+        # )
         print(Fore.YELLOW + 'Executing command: ' + str(captureBashCommand))
         print(Fore.GREEN + 'Script will do nothing for ' + config.capture_length + ' seconds.')
 
@@ -94,15 +135,25 @@ class Capturing:
             sys.exit(0)
 
         print(Fore.GREEN + str(filename) + ': Finished capturing')
-        return filename
+        print(Back.YELLOW + 'adding to queue' + str(filename))
+        self.q.put((filename, freq))
+        self.deviceq.put(antenna)
 
-    def decode_raw_data(self, filename):
+    def decode_raw_data(self, filename, freq):
         """
         Decode the captured data into GSM packets readable by wireshark. Also deleted raw data when requested to.
         """
         print(Fore.GREEN + str(filename) + ': Starting decoding of SDCCH8 and BCCH.')
-        SDCCH_bash = 'grgsm_decode -c ' + filename + ' -f ' + config.frequency + ' -m SDCCH8 -t 1'
-        BCCH_bash = 'grgsm_decode -c ' + filename + ' -f ' + config.frequency + ' -m BCCH -t 0'
+        SDCCH_bash = 'grgsm_decode -c ' + filename + ' -f ' + freq + ' -m SDCCH8 -t 1'
+        BCCH_bash = 'grgsm_decode -c ' + filename + ' -f ' + freq + ' -m BCCH -t 0'
+
+        # Start Tshark if wanted to capture this packet output of this capture file
+        if not config.use_wireshark:
+            tsharkBashCommand = "sudo tshark -w " + filename[:-6] + ".pcapng -i lo -q"
+            print(Fore.YELLOW + 'Executing command: ' + str(tsharkBashCommand))
+            tshark = Popen(tsharkBashCommand, shell=True)
+            #print(Back.RED + 'tshark should have started')
+            time.sleep(5)  # sleep to allow you to enter sudo password
 
         # Sleep to allow release of lock on file
         time.sleep(2)
@@ -117,10 +168,14 @@ class Capturing:
             BCCH = Popen(BCCH_bash, shell=True)
             BCCH.wait()
 
-        # Delete is wanted
+        # Delete if wanted
         if config.delete_capture_after_processing:
             print(Fore.GREEN + str(filename) + ': Deleting capture file as requested (change this in config file).')
             os.remove(filename)
+
+        if not config.use_wireshark:
+            tshark.terminate()
+            #print(Back.RED + 'tshark should have stopped')
 
         print(Fore.GREEN + str(filename) + ': Finished decoding')
 
@@ -132,5 +187,6 @@ class Capturing:
         stop.append(None)
         print(Fore.RED + 'The processing will stop after finishing current capturing and decoding...')
 
-
 Capturing()
+while 1:
+    pass
