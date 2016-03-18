@@ -60,6 +60,17 @@ class Capturing:
         for device in config.available_antennas:
             self.deviceq.put(device)
 
+        # allow entry of frequencies in both formats
+        self.frequencies = []
+        for freq in config.frequencies:
+            self.frequencies.append(freq)
+        for short_freq in config.frequencies_scanner:
+            long_freq = str(int(short_freq * 1000000))
+            self.frequencies.append(long_freq)
+        print 'The following frequencies will be processed:'
+        for freq in self.frequencies:
+            print freq
+
         # start actually doing stuff
         self.start_loop()
 
@@ -69,32 +80,38 @@ class Capturing:
         """
         stop = []
         thread.start_new_thread(self.stop_loop, (stop,))
-        thread.start_new_thread(self.decode_loop, ())
+        if config.execute_decode:
+            thread.start_new_thread(self.decode_loop, ())
         i = 0
         while not stop:
-            # every freq in one iteration
-            for freq in config.frequencies:
-                while True:
-                    # only continue if antenna available
-                    if self.deviceq.qsize() > 0:
-                        antenna = str(self.deviceq.get())
-                        print(Fore.GREEN + 'starting capturing on freq ' + str(freq))
-                        #self.capture_raw_data(i, freq, antenna)
-                        thread.start_new_thread(self.capture_raw_data, (i, freq, antenna))
-                        time.sleep(2)
-                        break
-                    else:
-                        time.sleep(10)
-            i += 1
+            # capture certain amount of times
+            if i < config.number_of_rounds:
+                # every freq in one iteration
+                for freq in self.frequencies:
+                    while True:
+                        # only continue if antenna available
+                        if self.deviceq.qsize() > 0:
+                            # TODO: add check which sees if enough harddiskspace
+                            antenna = str(self.deviceq.get())
+                            print(Fore.GREEN + 'starting capturing on freq ' + str(freq))
+                            #self.capture_raw_data(i, freq, antenna)
+                            thread.start_new_thread(self.capture_raw_data, (i, freq, antenna))
+                            time.sleep(2)
+                            break
+                        else:
+                            time.sleep(10)
+                i += 1
+            else:
+                break
 
         self.stop_decode = True
         print(Fore.GREEN + 'Finished ALL capturing')
-        if not self.q.empty():
+        if not self.q.empty() and config.execute_decode:
             self.decode_loop
 
     def decode_loop(self):
         """
-        Decode GSM Data to GSM packets with use of a queue (which contains the filenams to decode)
+        Decode GSM Data to GSM packets with use of a queue (which contains the filenames to decode)
         """
         while True:
             # check if we should stop (so finished capturing, and the decode queue is empty
@@ -105,7 +122,7 @@ class Capturing:
             if not self.q.empty():
                 filename, freq = self.q.get()
                 self.decode_raw_data(filename, freq)
-            # if the queue ie empty, let's chill for a while
+            # if the queue is empty, let's chill for a while
             else:
                 time.sleep(5)
 
@@ -129,14 +146,16 @@ class Capturing:
         # Start capture
         os.system(captureBashCommand)
 
+        everything_to_hell = False
         # Check if capture was succesful (as sometimes receiver quits for no reason)
         if not os.path.isfile(filename):
-            print(Fore.RED + str(filename) + ': Capture went wrong, exiting now')
-            sys.exit(0)
+            print(Back.RED + str(filename) + ': I think the capture went wrong, please check!! I will not decode this')
+            everything_to_hell = True
 
         print(Fore.GREEN + str(filename) + ': Finished capturing')
-        print(Back.YELLOW + 'adding to queue' + str(filename))
-        self.q.put((filename, freq))
+        if not everything_to_hell:
+            print(Back.YELLOW + 'adding to queue: ' + str(filename))
+            self.q.put((filename, freq))
         self.deviceq.put(antenna)
 
     def decode_raw_data(self, filename, freq):
