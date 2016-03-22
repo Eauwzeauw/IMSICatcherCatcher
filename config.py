@@ -1,8 +1,9 @@
-other_saving_location = '/media/eauwzeauw/ac51b22f-80ed-42b9-96bd-1f0dd6c6634a'  # set a (valid!) location here. The script will use this as base path
+other_saving_location = None #'/media/eauwzeauw/ac51b22f-80ed-42b9-96bd-1f0dd6c6634a'  # set a (valid!) location here. The script will use this as base path
 frequencies = ['930000000',
                '932000000',
-               ]  # as can be found through grgsm_livemon
-frequencies_scanner = [926.8, 932.4, 937.2]  # as can be found through grgsm_scanner
+               ]  # as can be found through grgsm_livemon  # as can be found through grgsm_livemon
+frequencies_scanner = [926.8, 932.4, 937.2, 940.2]  # as can be found through grgsm_scanner
+test_frequencies = False
 capture_length = '150'  # in seconds
 number_of_rounds = 2  # number of captures to be done (this number * capture length = total seconds of capture per freq)
 delete_capture_after_processing = True
@@ -21,4 +22,7 @@ available_antennas = ['00000002',
 ## Delft (TU):
 
 ## Delft (Marnix): 926800000, 930000000, 932000000, 932400000, 932800000, 937200000
+#
+
+
 

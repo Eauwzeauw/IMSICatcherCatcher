@@ -1,9 +1,10 @@
 import os
+import tempfile
 import threading
 from Queue import Queue
 from os.path import expanduser
 import time
-from subprocess import Popen
+from subprocess import Popen, PIPE
 import thread
 import sys
 
@@ -62,17 +63,32 @@ class Capturing:
 
         # allow entry of frequencies in both formats
         self.frequencies = []
+        temp_frequencies = []
         for freq in config.frequencies:
-            self.frequencies.append(freq)
+            temp_frequencies.append(freq)
         for short_freq in config.frequencies_scanner:
             long_freq = str(int(short_freq * 1000000))
-            self.frequencies.append(long_freq)
-        print 'The following frequencies will be processed:'
-        for freq in self.frequencies:
-            print freq
+            temp_frequencies.append(long_freq)
+
+        # test frequencies if they are really alive
+        if config.test_frequencies:
+            results = {}
+            for freq in temp_frequencies:
+                working_freq = self.test_frequency(freq)
+                results[freq] = working_freq
+            for freq, working in results.iteritems():
+                print 'freq: ' + str(freq) + ', working: ' + str(working)
+                if working:
+                    self.frequencies.append(freq)
+        else:
+            self.frequencies = temp_frequencies
+
+        # print 'The following frequencies will be processed:'
+        # for freq in self.frequencies:
+        #     print freq
 
         # start actually doing stuff
-        self.start_loop()
+        #self.start_loop()
 
     def start_loop(self):
         """
@@ -205,6 +221,34 @@ class Capturing:
         raw_input()
         stop.append(None)
         print(Fore.RED + 'The processing will stop after finishing current capturing and decoding...')
+
+    def test_frequency(self, frequency):
+        """
+        Test the given frequency with grgsm_livemon, by checking if there's a lot of output in the terminal.
+        """
+        p = Popen(['grgsm_livemon', '-f', frequency], stdout=PIPE)
+        i = 0
+        found = False
+        print(Fore.GREEN + 'Testing frequency: ' + str(frequency))
+
+        # loop through lines of terminal output
+        while True:
+            line = p.stdout.readline()
+
+            # skip first 15 lines for false positives
+            if i > 15:
+                if '2b 2b' in line:
+                    found = True
+                    print(Back.GREEN + 'Working: ' + str(frequency))
+                    break
+            # Now something should have happened, if not..quit
+            if i > 120:
+                break
+            i += 1
+        p.wait()
+        # sleep for reattaching kernel driver again.
+        time.sleep(3)
+        return found
 
 Capturing()
 while 1:
