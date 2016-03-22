@@ -88,7 +88,7 @@ class Capturing:
         #     print freq
 
         # start actually doing stuff
-        #self.start_loop()
+        self.start_loop()
 
     def start_loop(self):
         """
@@ -98,6 +98,7 @@ class Capturing:
         thread.start_new_thread(self.stop_loop, (stop,))
         if config.execute_decode:
             thread.start_new_thread(self.decode_loop, ())
+        capture_thread = None
         i = 0
         while not stop:
             # capture certain amount of times
@@ -110,8 +111,9 @@ class Capturing:
                             # TODO: add check which sees if enough harddiskspace
                             antenna = str(self.deviceq.get())
                             print(Fore.GREEN + 'starting capturing on freq ' + str(freq))
-                            #self.capture_raw_data(i, freq, antenna)
-                            thread.start_new_thread(self.capture_raw_data, (i, freq, antenna))
+
+                            capture_thread = threading.Thread(target=self.capture_raw_data, args=(i, freq, antenna))
+                            capture_thread.start()
                             time.sleep(2)
                             break
                         else:
@@ -119,6 +121,12 @@ class Capturing:
                 i += 1
             else:
                 break
+
+        # keep thread alive for last capture, and then wait for decode loop to die
+        flag = 1
+        while flag:
+            flag = capture_thread.isAlive()
+            time.sleep(3)
 
         self.stop_decode = True
         print(Fore.GREEN + 'Finished ALL capturing')
@@ -143,7 +151,6 @@ class Capturing:
                 time.sleep(5)
 
         print(Fore.GREEN + 'Finished ALL decoding; let\'s go to to the next location!')
-        sys.exit(0)
 
     def capture_raw_data(self, filenumber, freq, antenna):
         """
@@ -157,7 +164,7 @@ class Capturing:
         #     filename, freq, config.capture_length, antenna
         # )
         print(Fore.YELLOW + 'Executing command: ' + str(captureBashCommand))
-        print(Fore.GREEN + 'Script will do nothing for ' + config.capture_length + ' seconds.')
+        print(Fore.GREEN + 'Script will capture for ' + config.capture_length + ' seconds.')
 
         # Start capture
         os.system(captureBashCommand)
@@ -252,4 +259,4 @@ class Capturing:
 
 Capturing()
 while 1:
-    pass
+    time.sleep(5)
