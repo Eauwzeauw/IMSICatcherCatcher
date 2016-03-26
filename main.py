@@ -22,6 +22,8 @@ class Capturing:
             Yellow = Executing statements
             Red = Something went wrong
         """
+        if not os.geteuid() == 0:
+            sys.exit("\nYou must be root to run this application, please use sudo and try again.\n")
         self.continue_loop = True
 
         print(Fore.GREEN + '------------- Imsi Catcher^2 -------------')
