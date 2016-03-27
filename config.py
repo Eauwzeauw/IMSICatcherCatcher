@@ -16,7 +16,8 @@ use_wireshark = False  # False = use tshark
 available_antennas = ['00000006']
 
 ######### POST PROCECCSING VARIABLES ###########
-one_file_mode = '/home/eauwzeauw/IMSI/captures/22-03-2016_21:20:48/capture0_923600000.pcapng'  # None otherwise
+one_file_mode = None #'/home/eauwzeauw/IMSI/captures/22-03-2016_21:20:48/capture0_923600000.pcapng'  # None otherwise
+db_location = '/home/eauwzeauw/PycharmProjects/IMSICatcherCatcher' + '/imsicc.db'
 
 
 # often used frequencies:
