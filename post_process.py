@@ -33,7 +33,7 @@ class PostProcessing:
                 for filename in (f for f in filenames if f.endswith(".pcapng")):
                     filelist.append(os.path.join(dirpath, filename))
 
-        # connect to the -already existing- database
+        # connect to the -already existing- database, see https://docs.python.org/2/library/sqlite3.html for functions
         if not os.path.isfile(config.db_location):
             print(Fore.RED + 'Error: DB file does not exist, check given db_location in config. Exiting now')
             sys.exit()
@@ -70,18 +70,43 @@ class PostProcessing:
             new_num_request = request + self.location_updating_request_per_freq_counter
             new_num_accept = accept + self.accept_per_freq_counter
             self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept]
+
             # reset counters
             self.reject_per_freq_counter = 0
             self.location_updating_request_per_freq_counter = 0
             self.accept_per_freq_counter = 0
             print 'cipher= ' + str(cipher)
 
-        print '\n Rejections/requests numbers: '
+        print '\n Rejections/requests/accepts numbers: '
         print self.rejections
-        # TODO: do stuff with rejections table (put smart into DB)
+
+        print 'Processing this data into the database...'
+
+        # start adding to database
+        for cell_id, frequency in self.rejections:
+            rejects, requests, accepts = self.rejections[(cell_id, frequency)]
+
+            # First, check if the combination of cellid and freq (which makes it unique) already exists in the DB
+            content = (cell_id, frequency)
+            self.cursor.execute('SELECT * FROM roguetowers WHERE cellid=? AND frequency=?', content)
+            result = self.cursor.fetchone()
+
+            # Then insert depending on result
+            # TODO: fix following 2 queries
+            content = (cell_id, frequency, rejects, requests, accepts)  # these are replaced by '?' in a query
+            if result is None:  # combination of cellid and freq doesn't exist yet, make a new row
+                self.cursor.execute('SELECT * FROM roguetowers WHERE cellid=? AND frequency=?', content)
+            else:   # combination of cellid and freq does exist, add to current row(s?)
+                self.cursor.execute('SELECT * FROM roguetowers WHERE cellid=? AND frequency=?', content)
+
+            # And finally actually apply changes made
+            self.connection.commit()
+
 
         # close db connection when finished
         self.connection.close()
+
+        print '\n all done:)'
 
     def process_capture(self, location):
         """
@@ -89,6 +114,8 @@ class PostProcessing:
         """
         capture = pyshark.FileCapture(location)
         i = 0
+
+        # initialise values for if it isn't found in the packets
         cell_id = -1
         new_cipher = -1
         for packet in capture:
