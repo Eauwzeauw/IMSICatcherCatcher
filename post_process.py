@@ -1,16 +1,21 @@
 import os
 from os.path import expanduser
-
 import sys
-
-import config
 import pyshark
 import sqlite3
+import config
+from colorama import init, Fore, Back, Style
+init(autoreset=True)
+
+
 
 
 class PostProcessing:
     def __init__(self):
-
+        """
+        Post process the resulting pcapng files; look for giveaways (and input this in the DB with BST info)
+        Look for every pcapng file in IMSI folder and then process per frequency. at the end put this info in DB
+        """
         # prepare files to process. If only one file; enter this in the config. otherwise search imsi folder recursively
         filelist = []
         if config.one_file_mode:
@@ -30,7 +35,7 @@ class PostProcessing:
 
         # connect to the -already existing- database
         if not os.path.isfile(config.db_location):
-            print 'Error: DB file does not exist, check given db_location in config. Exiting now'
+            print(Fore.RED + 'Error: DB file does not exist, check given db_location in config. Exiting now')
             sys.exit()
         self.connection = sqlite3.connect(config.db_location)
         self.cursor = self.connection.cursor()
@@ -42,21 +47,38 @@ class PostProcessing:
         # rejection dictionary
         self.rejections = {}
         self.reject_per_freq_counter = 0
+        self.location_updating_request_per_freq_counter = 0
+        self.accept_per_freq_counter = 0
 
         # post-process all pcapng files
         for location in filelist:
             frequency = self.get_freq_by_filename(location)
             print '\n Now processing frequency: ' + str(frequency) + ' using file: ' + os.path.basename(location)
-            cell_id = self.process_capture(location)
+            cell_id, cipher = self.process_capture(location)
             print 'cell id: ' + str(cell_id)
 
-            # save rejections table
-            self.rejections[(cell_id, frequency)] = self.rejections.get((cell_id, frequency), 0) +\
-                                                    self.reject_per_freq_counter
-            self.reject_per_freq_counter = 0
+            if cell_id == -1:
+                print(Fore.RED + 'WARNING: no cell id detected for frequency ' + str(frequency))
+                print(Style.RESET_ALL)
+            if cipher == -1:
+                print(Fore.RED + 'WARNING: no cipher detected for frequency ' + str(frequency))
+                print(Style.RESET_ALL)
 
-        print 'Rejections numbers: '
+            # save rejections table
+            rejec, request, accept = self.rejections.get((cell_id, frequency), [0, 0, 0])
+            new_num_rejec = rejec + self.reject_per_freq_counter
+            new_num_request = request + self.location_updating_request_per_freq_counter
+            new_num_accept = accept + self.accept_per_freq_counter
+            self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept]
+            # reset counters
+            self.reject_per_freq_counter = 0
+            self.location_updating_request_per_freq_counter = 0
+            self.accept_per_freq_counter = 0
+            print 'cipher= ' + str(cipher)
+
+        print '\n Rejections/requests numbers: '
         print self.rejections
+        # TODO: do stuff with rejections table (put smart into DB)
 
         # close db connection when finished
         self.connection.close()
@@ -68,6 +90,7 @@ class PostProcessing:
         capture = pyshark.FileCapture(location)
         i = 0
         cell_id = -1
+        new_cipher = -1
         for packet in capture:
             # temp for develop, first x packets
             # if i > 60:
@@ -90,10 +113,20 @@ class PostProcessing:
 
             # lapdm cipher traffic
             if hasattr(packet, 'gsm_a.dtap'):
-                self.process_lapdm_ciphering_mode(packet)
+                cipher = self.process_lapdm_ciphering_mode(packet)
+                #print cipher
+                # check if there are multiple ciphers in 1 freq (first one is used)
+                if new_cipher == -1 and cipher != -1:
+                    new_cipher = cipher
+                if new_cipher != -1 and cipher != new_cipher and cipher != -1:
+                    print(Fore.RED + 'multiple ciphers in 1 capture, that is strange...')
+                    print(Fore.RED + 'First detected:' + str(new_cipher) + ', but now found: ' + str(cipher))
+                    print(Style.RESET_ALL)
+
+
 
         print 'number of packets processed: ' + str(i)
-        return int(cell_id)
+        return int(cell_id), int(new_cipher)
 
     def process_sys_info_3(self, packet):
         """
@@ -126,21 +159,27 @@ class PostProcessing:
         'gsm_a_spareb8', 'gsm_a_tmsi', 'gsm_a_unused', 'layer_name', 'msg_mm_type', 'pretty_print',
         'protocol_discriminator', 'raw_mode', 'seq_no', 'updating_type']
         """
+        cipher = -1
         dtap = packet['gsm_a.dtap']
         # check if this packet has DTAP Radio Resources Management Message Type: Ciphering Mode Command
         if hasattr(dtap, 'msg_rr_type'):
             # if message type is that of ciphering mode command
             if dtap.msg_rr_type == '53':
+                self.accept_per_freq_counter += 1
                 # get the cipher: zero is A5/1?
                 cipher = dtap.gsm_a_rr_algorithm_identifier
 
         # federico rejection stuff
         if hasattr(dtap, 'msg_mm_type'):
-            if hasattr(dtap, 'msg_rr_type'):
-                # TODO: find correct values, as these won't ever be True
-                if dtap.msg_mm_type == 0x08 or dtap.msg_mm_type == 0x04 or dtap.msg_rr_type == 0x35:
-                    print 'reject'
-                    self.reject_per_freq_counter += 1
+            #if hasattr(dtap, 'msg_rr_type'):
+            # DTAP Mobility Management Message Type: Location Updating Reject (0x04) == dtap.msg_mm_type == '4'
+            if dtap.msg_mm_type == '4':  # or dtap.msg_rr_type == 0x35:
+                self.reject_per_freq_counter += 1
+
+            # DTAP Mobility Management Message Type: Location Updating Request (0x08)
+            if dtap.msg_mm_type == '8':
+                self.location_updating_request_per_freq_counter += 1
+        return cipher
 
     def get_freq_by_filename(self, filename):
         """
