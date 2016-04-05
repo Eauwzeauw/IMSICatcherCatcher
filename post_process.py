@@ -41,7 +41,7 @@ class PostProcessing:
         self.cursor = self.connection.cursor()
 
         # test db
-        # for row in self.cursor.execute('SELECT frequency FROM roguetowers WHERE arfcn=1014'):
+        # for row in self.cursor.execute('SELECT frequency FROM towers WHERE arfcn=1014'):
         #     print row
 
         # rejection dictionary
@@ -88,20 +88,20 @@ class PostProcessing:
 
             # First, check if the combination of cellid and freq (which makes it unique) already exists in the DB
             content = (cell_id, frequency)
-            self.cursor.execute('SELECT * FROM roguetowers WHERE cellid=? AND frequency=?', content)
+            self.cursor.execute('SELECT * FROM towers WHERE cellid=? AND frequency=?', content)
             result = self.cursor.fetchone()
 
             # Then insert depending on result
-            # TODO: fix following 2 queries
-            content = (cell_id, frequency, rejects, requests, accepts)  # these are replaced by '?' in a query
+            # TODO: add used ciphermode and perhaps change column names 
+            #insertcontent = (cell_id, frequency, rejects, requests, accepts)  # these are replaced by '?' in a query
+            content = (rejects, requests, accepts, cell_id, frequency)
             if result is None:  # combination of cellid and freq doesn't exist yet, make a new row
-                self.cursor.execute('SELECT * FROM roguetowers WHERE cellid=? AND frequency=?', content)
+                self.cursor.execute('INSERT INTO towers (nrrejects, nrupdates, nrciphercommands, cellid, frequency) values (?,?,?,?,?)', content)
             else:   # combination of cellid and freq does exist, add to current row(s?)
-                self.cursor.execute('SELECT * FROM roguetowers WHERE cellid=? AND frequency=?', content)
+                self.cursor.execute('UPDATE towers SET nrrejects = ?, nrupdates = ?, nrciphercommands = ? WHERE cellid=? AND frequency=?', content)
 
             # And finally actually apply changes made
             self.connection.commit()
-
 
         # close db connection when finished
         self.connection.close()
