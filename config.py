@@ -19,6 +19,9 @@ available_antennas = ['00000006']
 one_file_mode = None # '/home/eauwzeauw/IMSI/captures/22-03-2016_21:20:48/somepackets_923600000.pcapng'  # None otherwise
 db_location = '/home/eauwzeauw/PycharmProjects/IMSICatcherCatcher' + '/imsicc.db'
 
+######### GIVEAWAY VARIABLES ##########
+disallowedEncryption = [1,2,3] #WARNING 0,1,2,3 do not necessarily correspond to A5/0-1-2-3 respectively, determined by wireshark.
+
 
 # often used frequencies:
 ## Delft (TU):
