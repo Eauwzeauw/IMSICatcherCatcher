@@ -20,6 +20,7 @@ one_file_mode = None # '/home/eauwzeauw/IMSI/captures/22-03-2016_21:20:48/somepa
 db_location = '/home/eauwzeauw/PycharmProjects/IMSICatcherCatcher' + '/imsicc.db'
 
 ######### GIVEAWAY VARIABLES ##########
+#A5/3 = 2, A5/1 = 0
 disallowedEncryption = [1,2,3] #WARNING 0,1,2,3 do not necessarily correspond to A5/0-1-2-3 respectively, determined by wireshark.
 
 
