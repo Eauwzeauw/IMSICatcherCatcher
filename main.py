@@ -7,6 +7,7 @@ import time
 from subprocess import Popen, PIPE
 import thread
 import sys
+import shlex
 
 import config
 from colorama import init, Fore, Back, Style
@@ -193,11 +194,12 @@ class Capturing:
 
         # Start Tshark if wanted to capture this packet output of this capture file
         if not config.use_wireshark:
-            tsharkBashCommand = "sudo tshark -w " + filename[:-6] + ".pcapng -i lo -q"
-            print(Fore.YELLOW + 'Executing command: ' + str(tsharkBashCommand))
-            tshark = Popen(tsharkBashCommand, shell=True)
-            #print(Back.RED + 'tshark should have started')
-            time.sleep(5)  # sleep to allow you to enter sudo password
+			tsharkBashCommand = "sudo tshark -w " + filename[:-6] + ".pcapng -i lo -q"
+			args = shlex.split(tsharkBashCommand)
+			print(Fore.YELLOW + 'Executing command: ' + str(tsharkBashCommand))
+			tshark = Popen(args)
+			#print(Back.RED + 'tshark should have started')
+			time.sleep(5)  # sleep to allow you to enter sudo password
 
         # Sleep to allow release of lock on file
         time.sleep(2)

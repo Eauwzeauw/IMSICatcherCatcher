@@ -54,7 +54,7 @@ class PostProcessing:
         for location in filelist:
             frequency = self.get_freq_by_filename(location)
             print '\n Now processing frequency: ' + str(frequency) + ' using file: ' + os.path.basename(location)
-            cell_id, cipher = self.process_capture(location)
+            cell_id, cipher, signal_gain = self.process_capture(location)
             print 'cell id: ' + str(cell_id)
 
             if cell_id == -1:
@@ -65,17 +65,22 @@ class PostProcessing:
                 print(Style.RESET_ALL)
 
             # save rejections table
-            rejec, request, accept = self.rejections.get((cell_id, frequency), [0, 0, 0])
-            new_num_rejec = rejec + self.reject_per_freq_counter
-            new_num_request = request + self.location_updating_request_per_freq_counter
-            new_num_accept = accept + self.accept_per_freq_counter
-            self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept]
+            #rejec, request, accept = self.rejections.get((cell_id, frequency), [0, 0, 0])
+            #new_num_rejec = rejec + self.reject_per_freq_counter
+            #new_num_request = request + self.location_updating_request_per_freq_counter
+            #new_num_accept = accept + self.accept_per_freq_counter
+            #self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept, cipher, signal_gain]
+            new_num_rejec = self.reject_per_freq_counter
+            new_num_request = self.location_updating_request_per_freq_counter
+            new_num_accept = self.accept_per_freq_counter
+            self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept, cipher, signal_gain]
 
             # reset counters
             self.reject_per_freq_counter = 0
             self.location_updating_request_per_freq_counter = 0
             self.accept_per_freq_counter = 0
-            print 'cipher= ' + str(cipher)
+            print 'cipher: ' + str(cipher)
+            print 'Signal gain: ' + str(signal_gain)
 
         print '\n Rejections/requests/accepts numbers: '
         print self.rejections
@@ -84,7 +89,7 @@ class PostProcessing:
 
         # start adding to database
         for cell_id, frequency in self.rejections:
-            rejects, requests, accepts = self.rejections[(cell_id, frequency)]
+            rejects, requests, accepts, cipher, signal_gain = self.rejections[(cell_id, frequency)]
 
             # First, check if the combination of cellid and freq (which makes it unique) already exists in the DB
             content = (cell_id, frequency)
@@ -94,11 +99,13 @@ class PostProcessing:
             # Then insert depending on result
             # TODO: add used ciphermode and perhaps change column names 
             #insertcontent = (cell_id, frequency, rejects, requests, accepts)  # these are replaced by '?' in a query
-            content = (rejects, requests, accepts, cell_id, frequency)
-            if result is None:  # combination of cellid and freq doesn't exist yet, make a new row
-                self.cursor.execute('INSERT INTO towers (nrrejects, nrupdates, nrciphercommands, cellid, frequency) values (?,?,?,?,?)', content)
-            else:   # combination of cellid and freq does exist, add to current row(s?)
-                self.cursor.execute('UPDATE towers SET nrrejects = ?, nrupdates = ?, nrciphercommands = ? WHERE cellid=? AND frequency=?', content)
+            content = (rejects, requests, accepts, cell_id, frequency, cipher, signal_gain)
+            #if result is None:  # combination of cellid and freq doesn't exist yet, make a new row
+
+            #Whether a row already exists for combination of cellid and freq, always insert new row so not overwrite useful information.
+            self.cursor.execute('INSERT INTO towers (nrrejects, nrupdates, nrciphercommands, cellid, frequency, usedencryption, signalgain, pcapngtower) values (?,?,?,?,?,?,?,1)', content)
+            #else:   # combination of cellid and freq does exist, add to current row(s?)
+            #    self.cursor.execute('UPDATE towers SET nrrejects = ?, nrupdates = ?, nrciphercommands = ? WHERE cellid=? AND frequency=?', content)
 
             # And finally actually apply changes made
             self.connection.commit()
@@ -113,11 +120,13 @@ class PostProcessing:
         Process the given pcapng file; for every packet in this capture, check what it is and call accompanying method.
         """
         capture = pyshark.FileCapture(location)
+        print capture
         i = 0
 
         # initialise values for if it isn't found in the packets
         cell_id = -1
         new_cipher = -1
+        signal_gain = 0
         for packet in capture:
             # temp for develop, first x packets
             # if i > 60:
@@ -135,13 +144,15 @@ class PostProcessing:
                 #print str(i) + ' = ' + packet['gsm_a.ccch'].gsm_a_dtap_msg_rr_type
 
                 # Sys info 3
-                if packet['gsm_a.ccch'].gsm_a_dtap_msg_rr_type == '27':
-                    cell_id = self.process_sys_info_3(packet)
+                #print packet['gsm_a.ccch'].gsm_a_dtap_msg_rr_type
+                if packet['gsm_a.ccch'].gsm_a_dtap_msg_rr_type == hex(27):
+                    #print 'hello sys3'
+                    cell_id, signal_gain = self.process_sys_info_3(packet)
 
             # lapdm cipher traffic
             if hasattr(packet, 'gsm_a.dtap'):
                 cipher = self.process_lapdm_ciphering_mode(packet)
-                #print cipher
+
                 # check if there are multiple ciphers in 1 freq (first one is used)
                 if new_cipher == -1 and cipher != -1:
                     new_cipher = cipher
@@ -149,11 +160,8 @@ class PostProcessing:
                     print(Fore.RED + 'multiple ciphers in 1 capture, that is strange...')
                     print(Fore.RED + 'First detected:' + str(new_cipher) + ', but now found: ' + str(cipher))
                     print(Style.RESET_ALL)
-
-
-
         print 'number of packets processed: ' + str(i)
-        return int(cell_id), int(new_cipher)
+        return int(str(cell_id), 16), int(str(new_cipher), 16), int(str(signal_gain), 16)
 
     def process_sys_info_3(self, packet):
         """
@@ -173,7 +181,9 @@ class PostProcessing:
         cell_id = ccch.gsm_a_bssmap_cell_ci
         mcc = ccch.e212_mcc
         mnc = ccch.e212_mnc
-        return cell_id
+        signal_gain = ccch.gsm_a_rr_cell_reselect_offset
+        # temporary_offset = ccch.gsm_a_rr_temporary_offset # if needed 
+        return cell_id, signal_gain
 
     def process_lapdm_ciphering_mode(self, packet):
         """
@@ -191,8 +201,10 @@ class PostProcessing:
         # check if this packet has DTAP Radio Resources Management Message Type: Ciphering Mode Command
         if hasattr(dtap, 'msg_rr_type'):
             # if message type is that of ciphering mode command
-            if dtap.msg_rr_type == '53':
+            if dtap.msg_rr_type == '0x35': #53
+
                 self.accept_per_freq_counter += 1
+                #print 'ACCEPT-COUNTER = ' + str(self.accept_per_freq_counter)
                 # get the cipher: zero is A5/1?
                 cipher = dtap.gsm_a_rr_algorithm_identifier
 
@@ -200,11 +212,12 @@ class PostProcessing:
         if hasattr(dtap, 'msg_mm_type'):
             #if hasattr(dtap, 'msg_rr_type'):
             # DTAP Mobility Management Message Type: Location Updating Reject (0x04) == dtap.msg_mm_type == '4'
-            if dtap.msg_mm_type == '4':  # or dtap.msg_rr_type == 0x35:
+            if dtap.msg_mm_type == '0x04':  # or dtap.msg_rr_type == 0x35:
                 self.reject_per_freq_counter += 1
+                #print 'REJECT-COUNTER = ' + str(self.reject_per_freq_counter)
 
             # DTAP Mobility Management Message Type: Location Updating Request (0x08)
-            if dtap.msg_mm_type == '8':
+            if dtap.msg_mm_type == '0x08':
                 self.location_updating_request_per_freq_counter += 1
         return cipher
 
@@ -216,3 +229,4 @@ class PostProcessing:
 
 
 PostProcessing()
+
