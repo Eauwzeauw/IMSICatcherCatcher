@@ -50,6 +50,8 @@ class PostProcessing:
         self.location_updating_request_per_freq_counter = 0
         self.accept_per_freq_counter = 0
 
+        self.other_data = {}
+
         # post-process all pcapng files
         for location in filelist:
             frequency = self.get_freq_by_filename(location)
@@ -71,6 +73,8 @@ class PostProcessing:
             new_num_accept = accept + self.accept_per_freq_counter
             self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept]
 
+            self.other_data[(cell_id, frequency)] = [signal_gain, signal_temporary, cipher]
+
             # reset counters
             self.reject_per_freq_counter = 0
             self.location_updating_request_per_freq_counter = 0
@@ -85,7 +89,8 @@ class PostProcessing:
 
         # start adding to database
         for cell_id, frequency in self.rejections:
-            rejects, requests, accepts, cipher, signal_gain = self.rejections[(cell_id, frequency)]
+            rejects, requests, accepts = self.rejections[(cell_id, frequency)]
+            signal_gain, signal_temporary, cipher = self.rejections[(cell_id, frequency)]
 
             # First, check if the combination of cellid and freq (which makes it unique) already exists in the DB
             content = (cell_id, frequency)
