@@ -54,7 +54,7 @@ class PostProcessing:
         for location in filelist:
             frequency = self.get_freq_by_filename(location)
             print '\n Now processing frequency: ' + str(frequency) + ' using file: ' + os.path.basename(location)
-            cell_id, cipher, signal_gain = self.process_capture(location)
+            cell_id, cipher, signal_gain, signal_temporary = self.process_capture(location)
             print 'cell id: ' + str(cell_id)
 
             if cell_id == -1:
@@ -65,15 +65,11 @@ class PostProcessing:
                 print(Style.RESET_ALL)
 
             # save rejections table
-            #rejec, request, accept = self.rejections.get((cell_id, frequency), [0, 0, 0])
-            #new_num_rejec = rejec + self.reject_per_freq_counter
-            #new_num_request = request + self.location_updating_request_per_freq_counter
-            #new_num_accept = accept + self.accept_per_freq_counter
-            #self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept, cipher, signal_gain]
-            new_num_rejec = self.reject_per_freq_counter
-            new_num_request = self.location_updating_request_per_freq_counter
-            new_num_accept = self.accept_per_freq_counter
-            self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept, cipher, signal_gain]
+            rejec, request, accept = self.rejections.get((cell_id, frequency), [0, 0, 0])
+            new_num_rejec = rejec + self.reject_per_freq_counter
+            new_num_request = request + self.location_updating_request_per_freq_counter
+            new_num_accept = accept + self.accept_per_freq_counter
+            self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept]
 
             # reset counters
             self.reject_per_freq_counter = 0
@@ -97,7 +93,7 @@ class PostProcessing:
             result = self.cursor.fetchone()
 
             # Then insert depending on result
-            # TODO: add used ciphermode and perhaps change column names 
+            # TODO: add used ciphermode and perhaps change column names
             #insertcontent = (cell_id, frequency, rejects, requests, accepts)  # these are replaced by '?' in a query
             content = (rejects, requests, accepts, cell_id, frequency, cipher, signal_gain)
             #if result is None:  # combination of cellid and freq doesn't exist yet, make a new row
@@ -127,6 +123,7 @@ class PostProcessing:
         cell_id = -1
         new_cipher = -1
         signal_gain = 0
+        signal_temporary = 0
         for packet in capture:
             # temp for develop, first x packets
             # if i > 60:
@@ -147,7 +144,7 @@ class PostProcessing:
                 #print packet['gsm_a.ccch'].gsm_a_dtap_msg_rr_type
                 if packet['gsm_a.ccch'].gsm_a_dtap_msg_rr_type == hex(27):
                     #print 'hello sys3'
-                    cell_id, signal_gain = self.process_sys_info_3(packet)
+                    cell_id, signal_gain, signal_temporary = self.process_sys_info_3(packet)
 
             # lapdm cipher traffic
             if hasattr(packet, 'gsm_a.dtap'):
@@ -161,7 +158,7 @@ class PostProcessing:
                     print(Fore.RED + 'First detected:' + str(new_cipher) + ', but now found: ' + str(cipher))
                     print(Style.RESET_ALL)
         print 'number of packets processed: ' + str(i)
-        return int(str(cell_id), 16), int(str(new_cipher), 16), int(str(signal_gain), 16)
+        return int(str(cell_id), 16), int(str(new_cipher), 16), int(str(signal_gain), 16), int(str(signal_temporary), 16)
 
     def process_sys_info_3(self, packet):
         """
@@ -182,8 +179,8 @@ class PostProcessing:
         mcc = ccch.e212_mcc
         mnc = ccch.e212_mnc
         signal_gain = ccch.gsm_a_rr_cell_reselect_offset
-        # temporary_offset = ccch.gsm_a_rr_temporary_offset # if needed 
-        return cell_id, signal_gain
+        temporary_offset = ccch.gsm_a_rr_temporary_offset # if needed
+        return cell_id, signal_gain, temporary_offset
 
     def process_lapdm_ciphering_mode(self, packet):
         """
