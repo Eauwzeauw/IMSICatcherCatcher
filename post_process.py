@@ -56,7 +56,7 @@ class PostProcessing:
         for location in filelist:
             frequency = self.get_freq_by_filename(location)
             print '\n Now processing frequency: ' + str(frequency) + ' using file: ' + os.path.basename(location)
-            cell_id, cipher, signal_gain, signal_temporary = self.process_capture(location)
+            cell_id, cipher, reselect_offset, temporary_offset = self.process_capture(location)
             print 'cell id: ' + str(cell_id)
 
             if cell_id == -1:
@@ -73,14 +73,15 @@ class PostProcessing:
             new_num_accept = accept + self.accept_per_freq_counter
             self.rejections[(cell_id, frequency)] = [new_num_rejec, new_num_request, new_num_accept]
 
-            self.other_data[(cell_id, frequency)] = [signal_gain, signal_temporary, cipher]
+            self.other_data[(cell_id, frequency)] = [reselect_offset, temporary_offset, cipher]
 
             # reset counters
             self.reject_per_freq_counter = 0
             self.location_updating_request_per_freq_counter = 0
             self.accept_per_freq_counter = 0
             print 'cipher: ' + str(cipher)
-            print 'Signal gain: ' + str(signal_gain)
+            print 'reselect offset: ' + str(reselect_offset)
+            print 'temporary offset: ' + str(temporary_offset)
 
         print '\n Rejections/requests/accepts numbers: '
         print self.rejections
@@ -90,7 +91,7 @@ class PostProcessing:
         # start adding to database
         for cell_id, frequency in self.rejections:
             rejects, requests, accepts = self.rejections[(cell_id, frequency)]
-            signal_gain, signal_temporary, cipher = self.rejections[(cell_id, frequency)]
+            reselect_offset, temporary_offset, cipher = self.other_data[(cell_id, frequency)]
 
             # First, check if the combination of cellid and freq (which makes it unique) already exists in the DB
             content = (cell_id, frequency)
@@ -100,11 +101,11 @@ class PostProcessing:
             # Then insert depending on result
             # TODO: add used ciphermode and perhaps change column names
             #insertcontent = (cell_id, frequency, rejects, requests, accepts)  # these are replaced by '?' in a query
-            content = (rejects, requests, accepts, cell_id, frequency, cipher, signal_gain)
+            content = (rejects, requests, accepts, cell_id, frequency, cipher, reselect_offset, temporary_offset)
             #if result is None:  # combination of cellid and freq doesn't exist yet, make a new row
 
             #Whether a row already exists for combination of cellid and freq, always insert new row so not overwrite useful information.
-            self.cursor.execute('INSERT INTO towers (nrrejects, nrupdates, nrciphercommands, cellid, frequency, usedencryption, signalgain, pcapngtower) values (?,?,?,?,?,?,?,1)', content)
+            self.cursor.execute('INSERT INTO towers (nrrejects, nrupdates, nrciphercommands, cellid, frequency, usedencryption, pcapngtower, reselection_offset, temporary_offset) values (?,?,?,?,?,?,1,?,?)', content)
             #else:   # combination of cellid and freq does exist, add to current row(s?)
             #    self.cursor.execute('UPDATE towers SET nrrejects = ?, nrupdates = ?, nrciphercommands = ? WHERE cellid=? AND frequency=?', content)
 
@@ -125,10 +126,10 @@ class PostProcessing:
         i = 0
 
         # initialise values for if it isn't found in the packets
-        cell_id = -1
+        cell_id = 0
         new_cipher = -1
-        signal_gain = 0
-        signal_temporary = 0
+        reselect_offset = 0
+        temporary_offset = 0
         for packet in capture:
             # temp for develop, first x packets
             # if i > 60:
@@ -149,7 +150,7 @@ class PostProcessing:
                 #print packet['gsm_a.ccch'].gsm_a_dtap_msg_rr_type
                 if packet['gsm_a.ccch'].gsm_a_dtap_msg_rr_type == hex(27):
                     #print 'hello sys3'
-                    cell_id, signal_gain, signal_temporary = self.process_sys_info_3(packet)
+                    cell_id, reselect_offset, temporary_offset = self.process_sys_info_3(packet)
 
             # lapdm cipher traffic
             if hasattr(packet, 'gsm_a.dtap'):
@@ -159,11 +160,14 @@ class PostProcessing:
                 if new_cipher == -1 and cipher != -1:
                     new_cipher = cipher
                 if new_cipher != -1 and cipher != new_cipher and cipher != -1:
-                    print(Fore.RED + 'multiple ciphers in 1 capture, that is strange...')
-                    print(Fore.RED + 'First detected:' + str(new_cipher) + ', but now found: ' + str(cipher))
+                    #print(Fore.RED + 'multiple ciphers in 1 capture, that is strange...')
+                    #print(Fore.RED + 'First detected:' + str(new_cipher) + ', but now found: ' + str(cipher))
                     print(Style.RESET_ALL)
+                    if int(str(cipher)) not in config.allowedEncryption:
+                        print(Fore.RED + 'Detected unsafe Encryption:' + str(cipher))
+                        new_cipher = cipher
         print 'number of packets processed: ' + str(i)
-        return int(str(cell_id), 16), int(str(new_cipher), 16), int(str(signal_gain), 16), int(str(signal_temporary), 16)
+        return int(str(cell_id), 16), int(str(new_cipher), 16), int(str(reselect_offset), 16), int(str(temporary_offset), 16)
 
     def process_sys_info_3(self, packet):
         """
@@ -183,9 +187,9 @@ class PostProcessing:
         cell_id = ccch.gsm_a_bssmap_cell_ci
         mcc = ccch.e212_mcc
         mnc = ccch.e212_mnc
-        signal_gain = ccch.gsm_a_rr_cell_reselect_offset
+        reselect_offset = ccch.gsm_a_rr_cell_reselect_offset
         temporary_offset = ccch.gsm_a_rr_temporary_offset # if needed
-        return cell_id, signal_gain, temporary_offset
+        return cell_id, reselect_offset, temporary_offset
 
     def process_lapdm_ciphering_mode(self, packet):
         """
