@@ -52,8 +52,7 @@ CREATE TABLE IF NOT EXISTS towers (
 	nohandover		INTEGER(1),
 	usedencryption		TEXT, 	/* ENUM("A5/0", "A5/1", "A5/2", "A5/3"), */
 		/* or make usedencryption a VARCHAR and paste tshark string */
-	nmea			TEXT,	/* VARCHAR(255) */
-	signalgain		INTEGER(4),
+	nmea			TEXT,	/* VARCHAR(255) */,
 	nrrejects		INTEGER(7),
 	nrupdates		INTEGER(7),
 	nrciphercommands	INTEGER(7),
@@ -62,7 +61,9 @@ CREATE TABLE IF NOT EXISTS towers (
 	longitude TEXT, /* VARCHAR(255) */
 	recordadded		TEXT,	/* DATETIME */
 	recordrevised		TEXT,	/* DATETIME */
-	pcapngtower		INTEGER(1)
+	pcapngtower		INTEGER(1),
+	reselection_offset		INTEGER(7),
+	temporary_offset		INTEGER(7),
 )
 END_SQL
 $dbh->do($sql) || die $_;

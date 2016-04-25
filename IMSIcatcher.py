@@ -24,17 +24,31 @@ class IMSIcatcher:
 			cellid 		UNSINGED INTEGER(5),
 			frequency	UNSIGNED INTEGER(10),
 			encryption	VARCHAR (255), /* encryption used (wireshark value) */
-			neighbourlist VARCHAR (3), /* stores TRUE if giveaway is present
-			rejections	VARCHAR (255), /* triple (#rejections, #updates, #ciphercommands) */
-			signal_gain	VARCHAR (255)) /* tuple (reselection offset, temporary offset)""")
-
-		connection.commit()
-		connection.close()
+			neighbourlist VARCHAR (3), /* stores TRUE if giveaway is present */
+			signal_gain	VARCHAR (255), /* tuple (reselection offset, temporary offset) */
+			rejections	VARCHAR (255)) /* triple (#rejections, #updates, #ciphercommands) */ """)
 
 		processEncryption()
 		processNeighbourList()
 		processGain()
 		processRejections()
+		towerCount = 0
+		for tower in cursor.execute('SELECT * FROM IMSIcatchers'):
+			towerCount += 1
+			print 'Cell ID: ' + redIfTrue(tower[1])
+			print 'Frequency: ' + redIfTrue(tower[2])
+			print 'Encryption Giveaway: ' + redIfTrue(tower[3])
+			print 'Neighbour list Giveaway: ' + redIfTrue(tower[4])
+			print 'Rejections Giveaway: ' + redIfTrue(tower[5])
+			print 'Signal Gain Giveaway: ' + redIfTrue(tower[6])
+			print ' '
+
+		print Fore.RED + str(towerCount) + ' possible IMSIcatchers found!'
+		print 'Data saved to database'
+
+		connection.commit()
+		connection.close()
+
 
 
 def processEncryption():
@@ -113,6 +127,12 @@ def processRejections():
 			cursor.execute("UPDATE imsicatchers SET rejections = ? WHERE cellid = ? AND frequency = ?", (rejection, cellid, frequency))
 	connection.commit()
 	connection.close()
+
+def redIfTrue(value):
+	if (value != None ):
+		return Fore.RED + str(value)
+	else:
+		return str(value)
 
 
 
