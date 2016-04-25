@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS towers (
 	recordrevised		TEXT,	/* DATETIME */
 	pcapngtower		INTEGER(1),
 	reselection_offset		INTEGER(7),
-	temporary_offset		INTEGER(7),
+	temporary_offset		INTEGER(7)
 )
 END_SQL
 $dbh->do($sql) || die $_;
