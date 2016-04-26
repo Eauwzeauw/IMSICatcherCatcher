@@ -78,10 +78,8 @@ class Giveaways:
 		connection = sqlite3.connect(config.db_location)
 		cursor = connection.cursor()
 		towers = set()
-		#query = 'SELECT DISTINCT cellid, frequency FROM towers WHERE signalgain != 0 AND signal_temporary != 0'
 
-		query = 'SELECT DISTINCT cellid, frequency FROM towers WHERE reselection_offset != 0 OR temporary_offset != 0'
-
+		query = 'SELECT DISTINCT cellid, frequency FROM towers WHERE reselection_offset != 0 OR temporary_offset != 0 OR (reselect_hysteris < 2 AND reselect_hysteris > 4)'
 
 		for row in cursor.execute(query):
 			towers.add((row[0],row[1]))
@@ -97,12 +95,13 @@ class Giveaways:
 
 		query = 'SELECT DISTINCT cellid, frequency, nrrejects, nrupdates, nrciphercommands FROM towers WHERE nrrejects != 0 OR nrupdates != 0 OR nrciphercommands != 0'
 		for row in cursor.execute(query):
-			nrrjects = row[2]
+			nrrejects = row[2]
 			nrupdates = row[3]
 			nrciphercommands = row[4]
-			#The number of ciphercommands should not be much smaller than the number of update requests
-			if ((nrupdates >= config.updates_minimum) and (float(nrupdates) / float(nrciphercommands) > config.updates_ratio) ):
-				towers.add((row[0],row[1]))
+			#The number of rejections should not be significant compared to the sum of rejections and ciphering commands
+			if (nrrejects + nrciphercommands) > config.updates_minimum:
+				if nrrejects > ((nrrejects + nrciphercommands) * config.rejection_ratio):
+					towers.add((row[0],row[1]))
 
 		connection.close()
 		return towers
