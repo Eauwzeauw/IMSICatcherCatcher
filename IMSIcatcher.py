@@ -24,7 +24,7 @@ class IMSIcatcher:
 			cellid 		UNSINGED INTEGER(5),
 			frequency	UNSIGNED INTEGER(10),
 			encryption	VARCHAR (255), /* encryption used (wireshark value) */
-			neighbourlist VARCHAR (3), /* stores TRUE if giveaway is present */
+			neighbourlist UNSIGNED INTGEGER (5), /* stores TRUE if giveaway is present */
 			signal_gain	VARCHAR (255), /* tuple (reselection offset, temporary offset) */
 			rejections	VARCHAR (255)) /* triple (#rejections, #updates, #ciphercommands) */ """)
 
@@ -33,14 +33,23 @@ class IMSIcatcher:
 		processGain()
 		processRejections()
 		towerCount = 0
-		for tower in cursor.execute('SELECT * FROM IMSIcatchers'):
+		cursor.execute('SELECT * FROM IMSIcatchers')
+		response = cursor.fetchall()
+		for tower in response:
 			towerCount += 1
 			print 'Cell ID: ' + redIfTrue(tower[1])
 			print 'Frequency: ' + redIfTrue(tower[2])
 			print 'Encryption Giveaway: ' + redIfTrue(tower[3])
 			print 'Neighbour list Giveaway: ' + redIfTrue(tower[4])
-			print 'Rejections Giveaway: ' + redIfTrue(tower[5])
-			print 'Signal Gain Giveaway: ' + redIfTrue(tower[6])
+			print 'Signal Gain Giveaway: ' + redIfTrue(tower[5])
+			print 'Rejections Giveaway: ' + redIfTrue(tower[6])
+			locCount = 1;
+			for location in cursor.execute('SELECT DISTINCT latitude, longitude FROM towers WHERE cellid = ? AND frequency = ? AND (latitude IS NOT NULL AND longitude IS NOT NULL )', (tower[1], tower[2])):
+				print 'Location ' + str(locCount) + ': ' + str(location[0]) + ', ' + str(location[1])
+				locCount += 1
+			if locCount == 1:
+				print 'Location not available'
+
 			print ' '
 
 		print Fore.RED + str(towerCount) + ' possible IMSIcatchers found!'
@@ -81,8 +90,10 @@ def processNeighbourList():
 		frequency = tower[1]
 		cursor.execute("SELECT cellid FROM imsicatchers WHERE cellid = ? AND frequency = ?", (cellid, frequency))
 		data = cursor.fetchone()
+		cursor.execute('SELECT DISTINCT latitude, longitude FROM towers WHERE cellid = ? AND frequency = ? AND (latitude IS NOT NULL AND longitude IS NOT NULL )', (cellid, frequency))
+		locCount = len(cursor.fetchall())
 		if data is None:
-			cursor.execute("INSERT INTO imsicatchers (cellid, frequency, neighbourlist) VALUES (?,?,'TRUE')", (cellid, frequency))
+			cursor.execute("INSERT INTO imsicatchers (cellid, frequency, neighbourlist) VALUES (?,?,?)", (cellid, frequency, locCount))
 		else:
 			cursor.execute("UPDATE imsicatchers SET neighbourlist = 'TRUE' WHERE cellid = ? AND frequency = ?", (cellid, frequency))
 	connection.commit()
