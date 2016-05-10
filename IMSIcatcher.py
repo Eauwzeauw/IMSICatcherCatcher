@@ -3,6 +3,7 @@ import sqlite3
 import sys
 import config
 import giveaways as ga
+import csv
 from colorama import init, Fore, Back, Style
 init(autoreset=True)
 
@@ -13,6 +14,7 @@ class IMSIcatcher:
 		This script creates a new table where only (cellid, frequency) pairs are listed that have at least one giveaway.
 		The table provides a clear overview of which giveaways are present
 		Each giveaway function from giveaways.py is processed here separately to create the new table
+		Furthermore, the locations of possible imsicatchers are written to a .csv file used for triangulation.
 		"""
 
 		connection = sqlite3.connect(config.db_location)
@@ -35,6 +37,7 @@ class IMSIcatcher:
 		towerCount = 0
 		cursor.execute('SELECT * FROM IMSIcatchers')
 		response = cursor.fetchall()
+		csvdata = [['cellid', 'frequency', 'signalstrength', 'longitutde', 'latitude']] #data to be written to csv file
 		for tower in response:
 			towerCount += 1
 			print 'Cell ID: ' + redIfTrue(tower[1])
@@ -44,9 +47,10 @@ class IMSIcatcher:
 			print 'Signal Gain Giveaway: ' + redIfTrue(tower[5])
 			print 'Rejections Giveaway: ' + redIfTrue(tower[6])
 			locCount = 1;
-			for location in cursor.execute('SELECT DISTINCT latitude, longitude FROM towers WHERE cellid = ? AND frequency = ? AND (latitude IS NOT NULL AND longitude IS NOT NULL )', (tower[1], tower[2])):
+			for location in cursor.execute('SELECT DISTINCT latitude, longitude, signalstrength FROM towers WHERE cellid = ? AND frequency = ? AND (latitude IS NOT NULL AND longitude IS NOT NULL )', (tower[1], tower[2])):
 				print 'Location ' + str(locCount) + ': ' + str(location[0]) + ', ' + str(location[1])
 				locCount += 1
+				csvdata.append([tower[1], tower[2], location[2], location[0], location[1]])
 			if locCount == 1:
 				print 'Location not available'
 
@@ -57,6 +61,11 @@ class IMSIcatcher:
 
 		connection.commit()
 		connection.close()
+
+		#write csv data to file
+		with open('locations.csv', 'w') as fp:
+			a = csv.writer(fp, delimiter=',')
+			a.writerows(csvdata)
 
 
 
