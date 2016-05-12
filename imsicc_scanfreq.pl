@@ -52,11 +52,10 @@ CREATE TABLE IF NOT EXISTS towers (
 	nohandover		INTEGER(1),
 	usedencryption		TEXT, 	/* ENUM("A5/0", "A5/1", "A5/2", "A5/3"), */
 		/* or make usedencryption a VARCHAR and paste tshark string */
-	nmea			TEXT,	/* VARCHAR(255) */,
+	nmea			TEXT	/* VARCHAR(255) */,
 	nrrejects		INTEGER(7),
 	nrupdates		INTEGER(7),
 	nrciphercommands	INTEGER(7),
-	
 	latitude	TEXT, /* VARCHAR(255) */
 	longitude TEXT, /* VARCHAR(255) */
 	recordadded		TEXT,	/* DATETIME */
