@@ -66,6 +66,9 @@ class PostProcessing:
                 print(Fore.RED + 'WARNING: no cipher detected for frequency ' + str(frequency))
                 print(Style.RESET_ALL)
 
+            if cipher == 55: #translate no cipher int to str
+                cipher = "A5/0"
+
             # save rejections table
             rejec, request, accept = self.rejections.get((cell_id, frequency), [0, 0, 0])
             new_num_rejec = rejec + self.reject_per_freq_counter
@@ -100,15 +103,11 @@ class PostProcessing:
             result = self.cursor.fetchone()
 
             # Then insert depending on result
-            # TODO: add used ciphermode and perhaps change column names
-            #insertcontent = (cell_id, frequency, rejects, requests, accepts)  # these are replaced by '?' in a query
             content = (rejects, requests, accepts, cell_id, frequency, cipher, reselect_offset, temporary_offset, reselect_hysteris)
             #if result is None:  # combination of cellid and freq doesn't exist yet, make a new row
 
             #Whether a row already exists for combination of cellid and freq, always insert new row so not overwrite useful information.
-            self.cursor.execute('INSERT INTO towers (nrrejects, nrupdates, nrciphercommands, cellid, frequency, usedencryption, pcapngtower, reselection_offset, temporary_offset, reselect_hysteris) values (?,?,?,?,?,?,1,?,?,?)', content)
-            #else:   # combination of cellid and freq does exist, add to current row(s?)
-            #    self.cursor.execute('UPDATE towers SET nrrejects = ?, nrupdates = ?, nrciphercommands = ? WHERE cellid=? AND frequency=?', content)
+            self.cursor.execute('INSERT INTO towers (nrrejects, nrupdates, nrciphercommands, cellid, frequency, usedencryption, pcapngtower, reselection_offset, temporary_offset, reselect_hysteresis) values (?,?,?,?,?,?,1,?,?,?)', content)
 
             # And finally actually apply changes made
             self.connection.commit()
@@ -133,16 +132,7 @@ class PostProcessing:
         temporary_offset = 0
         reselect_hysteris = 0
         for packet in capture:
-            # temp for develop, first x packets
-            # if i > 60:
-            #     break
             i += 1
-
-            #frame_number = packet['gsmtap'].frame_nr
-            # print 'packet frame number: ' + str(frame_number) + ' , i= ' + str(i)
-            # if packet['gsmtap'].frame_nr == '389283':
-            #     print packet
-            #     print ' type: ' + str(packet['gsm_a.dtap'].msg_rr_type)
 
             # all ccch traffic
             if hasattr(packet, 'gsm_a.ccch'):
@@ -160,11 +150,9 @@ class PostProcessing:
 
                 # check if there are multiple ciphers in 1 freq (first one is used)
                 if new_cipher == -1 and cipher != -1:
+                    #print new_cipher
                     new_cipher = cipher
                 if new_cipher != -1 and cipher != new_cipher and cipher != -1:
-                    #print(Fore.RED + 'multiple ciphers in 1 capture, that is strange...')
-                    #print(Fore.RED + 'First detected:' + str(new_cipher) + ', but now found: ' + str(cipher))
-                    print(Style.RESET_ALL)
                     if int(str(cipher)) not in config.allowedEncryption:
                         print(Fore.RED + 'Detected unsafe Encryption:' + str(cipher))
                         new_cipher = cipher
@@ -215,11 +203,15 @@ class PostProcessing:
                 self.accept_per_freq_counter += 1
                 #print 'ACCEPT-COUNTER = ' + str(self.accept_per_freq_counter)
                 # get the cipher: zero is A5/1?
-                cipher = dtap.gsm_a_rr_algorithm_identifier
+                try:
+                    cipher = dtap.gsm_a_rr_algorithm_identifier
+                except AttributeError:
+                    print(Fore.RED + '\nNO ENCRYPTION PRESENT!\n')
+                    print(Style.RESET_ALL)
+                    cipher = 37 #means no encryption, decimal: 55
 
         # federico rejection stuff
         if hasattr(dtap, 'msg_mm_type'):
-            #if hasattr(dtap, 'msg_rr_type'):
             # DTAP Mobility Management Message Type: Location Updating Reject (0x04) == dtap.msg_mm_type == '4'
             if dtap.msg_mm_type == '0x04':  # or dtap.msg_rr_type == 0x35:
                 self.reject_per_freq_counter += 1

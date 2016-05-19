@@ -117,7 +117,7 @@ def processGain():
 		frequency = tower[1]
 		cursor.execute("SELECT cellid FROM imsicatchers WHERE cellid = ? AND frequency = ?", (cellid, frequency))
 		data = cursor.fetchone()
-		cursor.execute("SELECT reselection_offset, temporary_offset, reselect_hysteris FROM towers WHERE cellid = ? AND frequency = ? AND (reselection_offset != 0 OR temporary_offset != 0)", (cellid, frequency))
+		cursor.execute("SELECT reselection_offset, temporary_offset, reselect_hysteresis FROM towers WHERE cellid = ? AND frequency = ? AND (reselection_offset != 0 OR temporary_offset != 0)", (cellid, frequency))
 		gain_data = cursor.fetchone()
 		signal_gain = str(gain_data[0]) + ' ' + str(gain_data[1]) + ' ' + str(gain_data[2])
 

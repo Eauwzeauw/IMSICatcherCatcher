@@ -79,7 +79,7 @@ class Giveaways:
 		cursor = connection.cursor()
 		towers = set()
 
-		query = 'SELECT DISTINCT cellid, frequency FROM towers WHERE reselection_offset != 0 OR temporary_offset != 0 OR (reselect_hysteris < 2 AND reselect_hysteris > 4)'
+		query = 'SELECT DISTINCT cellid, frequency FROM towers WHERE reselection_offset != 0 OR temporary_offset != 0 OR (reselect_hysteresis < 2 AND reselect_hysteresis > 4)'
 
 		for row in cursor.execute(query):
 			towers.add((row[0],row[1]))
@@ -130,7 +130,3 @@ def getTimestamps():
 
         
 giveaway = Giveaways()
-#print giveaway.encryption()
-#giveaway.neighbourList()
-#print giveaway.rejections()
-#print giveaway.gain()
